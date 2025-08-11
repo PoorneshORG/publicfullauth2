@@ -11,7 +11,7 @@ jobs:
   sbom:
     runs-on: ubuntu-latest
     env:
-      DT_URL: ${{ secrets.DEPENDENCY_TRACK_API_URL }}       # e.g., https://dependency-track.example.com
+      DT_URL: ${{ secrets.DEPENDENCY_TRACK_API_URL }}
       DT_API_KEY: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
       PROJECT_NAME: ${{ github.repository }}
       PROJECT_VERSION: ${{ github.sha }}
@@ -19,10 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install fixed Syft version
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b /usr/local/bin
+          | sh -s -- -b /usr/local/bin v1.17.0
 
       # Java / Spring (Maven)
       - name: Generate SBOM - Java Maven
@@ -43,9 +44,9 @@ jobs:
         if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
         run: |
           if [ -f package-lock.json ]; then
-            syft dir:. -o package-lock.json cyclonedx-json > sbom.json
+            syft package-lock.json -o cyclonedx-json > sbom.json
           elif [ -f yarn.lock ]; then
-            syft dir:. -o yarn.lock cyclonedx-json > sbom.json
+            syft yarn.lock -o cyclonedx-json > sbom.json
           fi
 
       # Python
@@ -53,16 +54,16 @@ jobs:
         if: hashFiles('requirements.txt') != '' || hashFiles('poetry.lock') != ''
         run: |
           if [ -f requirements.txt ]; then
-            syft dir:. -o requirements.txt cyclonedx-json > sbom.json
+            syft requirements.txt -o cyclonedx-json > sbom.json
           elif [ -f poetry.lock ]; then
-            syft dir:. -o poetry.lock cyclonedx-json > sbom.json
+            syft poetry.lock -o cyclonedx-json > sbom.json
           fi
 
       # Flutter
       - name: Generate SBOM - Flutter
         if: hashFiles('pubspec.lock') != ''
         run: |
-          syft dir:. -o pubspec.lock cyclonedx-json > sbom.json
+          syft pubspec.lock -o cyclonedx-json > sbom.json
 
       # Create project in Dependency-Track if missing
       - name: Get or Create Project
