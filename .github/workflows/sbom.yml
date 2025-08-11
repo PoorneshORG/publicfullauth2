@@ -23,7 +23,7 @@ jobs:
       - name: Install Syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b /usr/local/bin v1.17.0
+          | sh -s -- -b /usr/local/bin v1.29.0
 
       # Java / Spring (Maven)
       - name: Generate SBOM - Java Maven
