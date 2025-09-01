@@ -19,29 +19,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install CycloneDX CLI
+      # ---------------- Install CycloneDX CLI ----------------
       - name: Install CycloneDX CLI
         run: |
           C_VERSION=0.26.1
-          curl -L https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-linux-x64 -o cyclonedx
+          curl -L -o cyclonedx \
+            https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-linux-x64
           chmod +x cyclonedx
           sudo mv cyclonedx /usr/local/bin/
+      
+      - name: Verify CycloneDX CLI
+        run: cyclonedx --version
 
-      # ---------- Java / Maven ----------
+      # ---------------- Generate SBOMs ----------------
       - name: Generate SBOM - Maven
         if: hashFiles('pom.xml') != ''
         run: |
           mvn -B clean install -DskipTests
-          cyclonedx mvn -o sbom-maven.json
+          cyclonedx mvn --output-file sbom-maven.json
 
-      # ---------- Java / Gradle ----------
       - name: Generate SBOM - Gradle
         if: hashFiles('build.gradle*') != ''
         run: |
           ./gradlew build -x test
-          cyclonedx gradle -o sbom-gradle.json
+          cyclonedx gradle --output-file sbom-gradle.json
 
-      # ---------- Node.js / React ----------
       - name: Generate SBOM - Node.js
         if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
         run: |
@@ -51,7 +53,6 @@ jobs:
             cyclonedx yarn --output-file sbom-node.json
           fi
 
-      # ---------- Python ----------
       - name: Generate SBOM - Python
         if: hashFiles('requirements.txt') != '' || hashFiles('poetry.lock') != '' || hashFiles('Pipfile.lock') != ''
         run: |
@@ -63,24 +64,24 @@ jobs:
             cyclonedx pipenv --output-file sbom-python.json
           fi
 
-      # ---------- Flutter ----------
       - name: Generate SBOM - Flutter
         if: hashFiles('pubspec.lock') != ''
-        run: |
-          cyclonedx pub --output-file sbom-flutter.json
+        run: cyclonedx pub --output-file sbom-flutter.json
 
-      # ---------- Merge Multiple SBOMs ----------
-      - name: Merge SBOMs (if multiple)
+      # ---------------- Merge All SBOMs ----------------
+      - name: Merge SBOMs
         run: |
           files=$(ls sbom-*.json 2>/dev/null || true)
           if [ -n "$files" ]; then
-            cyclonedx merge $files --output-file sbom-merged.json --output-format json
+            cyclonedx merge $files \
+              --output-file sbom-merged.json \
+              --output-format json
           else
             echo "No SBOMs generated!"
             exit 1
           fi
 
-      # ---------- Create or Reuse Project ----------
+      # ---------------- Dependency-Track Project Handling ----------------
       - name: Get or Create Project
         id: project
         run: |
@@ -97,7 +98,7 @@ jobs:
 
           echo "uuid=$UUID" >> $GITHUB_OUTPUT
 
-      # ---------- Upload Final SBOM ----------
+      # ---------------- Upload Final SBOM ----------------
       - name: Upload SBOM to Dependency-Track
         run: |
           curl -s -X POST "$DT_URL/api/v1/bom" \
