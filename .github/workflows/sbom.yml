@@ -19,53 +19,68 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install fixed Syft version
-      - name: Install Syft
+      # Install CycloneDX CLI
+      - name: Install CycloneDX CLI
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
-          | sh -s -- -b /usr/local/bin v1.29.0
+          C_VERSION=0.26.1
+          curl -L https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-linux-x64 -o cyclonedx
+          chmod +x cyclonedx
+          sudo mv cyclonedx /usr/local/bin/
 
-      # Java / Spring (Maven)
-      - name: Generate SBOM - Java Maven
+      # ---------- Java / Maven ----------
+      - name: Generate SBOM - Maven
         if: hashFiles('pom.xml') != ''
         run: |
           mvn -B clean install -DskipTests
-          syft target/*.jar -o cyclonedx-json > sbom.json
+          cyclonedx mvn -o sbom-maven.json
 
-      # Gradle / Kotlin
+      # ---------- Java / Gradle ----------
       - name: Generate SBOM - Gradle
         if: hashFiles('build.gradle*') != ''
         run: |
           ./gradlew build -x test
-          syft build/libs/*.jar -o cyclonedx-json > sbom.json
+          cyclonedx gradle -o sbom-gradle.json
 
-      # Node.js / React
-      - name: Generate SBOM - Node.js (npm or yarn)
+      # ---------- Node.js / React ----------
+      - name: Generate SBOM - Node.js
         if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
         run: |
           if [ -f package-lock.json ]; then
-            syft package-lock.json -o cyclonedx-json > sbom.json
+            cyclonedx npm --output-file sbom-node.json
           elif [ -f yarn.lock ]; then
-            syft yarn.lock -o cyclonedx-json > sbom.json
+            cyclonedx yarn --output-file sbom-node.json
           fi
 
-      # Python
+      # ---------- Python ----------
       - name: Generate SBOM - Python
-        if: hashFiles('requirements.txt') != '' || hashFiles('poetry.lock') != ''
+        if: hashFiles('requirements.txt') != '' || hashFiles('poetry.lock') != '' || hashFiles('Pipfile.lock') != ''
         run: |
           if [ -f requirements.txt ]; then
-            syft requirements.txt -o cyclonedx-json > sbom.json
+            cyclonedx pip requirements.txt --output-file sbom-python.json
           elif [ -f poetry.lock ]; then
-            syft poetry.lock -o cyclonedx-json > sbom.json
+            cyclonedx poetry --output-file sbom-python.json
+          elif [ -f Pipfile.lock ]; then
+            cyclonedx pipenv --output-file sbom-python.json
           fi
 
-      # Flutter
+      # ---------- Flutter ----------
       - name: Generate SBOM - Flutter
         if: hashFiles('pubspec.lock') != ''
         run: |
-          syft pubspec.lock -o cyclonedx-json > sbom.json
+          cyclonedx pub --output-file sbom-flutter.json
 
-      # Create project in Dependency-Track if missing
+      # ---------- Merge Multiple SBOMs ----------
+      - name: Merge SBOMs (if multiple)
+        run: |
+          files=$(ls sbom-*.json 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            cyclonedx merge $files --output-file sbom-merged.json --output-format json
+          else
+            echo "No SBOMs generated!"
+            exit 1
+          fi
+
+      # ---------- Create or Reuse Project ----------
       - name: Get or Create Project
         id: project
         run: |
@@ -82,10 +97,103 @@ jobs:
 
           echo "uuid=$UUID" >> $GITHUB_OUTPUT
 
-      # Upload SBOM
+      # ---------- Upload Final SBOM ----------
       - name: Upload SBOM to Dependency-Track
         run: |
           curl -s -X POST "$DT_URL/api/v1/bom" \
             -H "X-Api-Key: $DT_API_KEY" \
             -F "project=${{ steps.project.outputs.uuid }}" \
-            -F "bom=@sbom.json"
+            -F "bom=@sbom-merged.json"
+
+
+# name: SBOM Scan and Upload
+
+# on:
+#   push:
+#     branches: ['**']
+#   pull_request:
+#     branches: ['**']
+#   workflow_dispatch:
+
+# jobs:
+#   sbom:
+#     runs-on: ubuntu-latest
+#     env:
+#       DT_URL: ${{ secrets.DEPENDENCY_TRACK_API_URL }}
+#       DT_API_KEY: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}
+#       PROJECT_NAME: ${{ github.repository }}
+#       PROJECT_VERSION: ${{ github.sha }}
+
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       # Install fixed Syft version
+#       - name: Install Syft
+#         run: |
+#           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+#           | sh -s -- -b /usr/local/bin v1.29.0
+
+#       # Java / Spring (Maven)
+#       - name: Generate SBOM - Java Maven
+#         if: hashFiles('pom.xml') != ''
+#         run: |
+#           mvn -B clean install -DskipTests
+#           syft target/*.jar -o cyclonedx-json > sbom.json
+
+#       # Gradle / Kotlin
+#       - name: Generate SBOM - Gradle
+#         if: hashFiles('build.gradle*') != ''
+#         run: |
+#           ./gradlew build -x test
+#           syft build/libs/*.jar -o cyclonedx-json > sbom.json
+
+#       # Node.js / React
+#       - name: Generate SBOM - Node.js (npm or yarn)
+#         if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
+#         run: |
+#           if [ -f package-lock.json ]; then
+#             syft package-lock.json -o cyclonedx-json > sbom.json
+#           elif [ -f yarn.lock ]; then
+#             syft yarn.lock -o cyclonedx-json > sbom.json
+#           fi
+
+#       # Python
+#       - name: Generate SBOM - Python
+#         if: hashFiles('requirements.txt') != '' || hashFiles('poetry.lock') != ''
+#         run: |
+#           if [ -f requirements.txt ]; then
+#             syft requirements.txt -o cyclonedx-json > sbom.json
+#           elif [ -f poetry.lock ]; then
+#             syft poetry.lock -o cyclonedx-json > sbom.json
+#           fi
+
+#       # Flutter
+#       - name: Generate SBOM - Flutter
+#         if: hashFiles('pubspec.lock') != ''
+#         run: |
+#           syft pubspec.lock -o cyclonedx-json > sbom.json
+
+#       # Create project in Dependency-Track if missing
+#       - name: Get or Create Project
+#         id: project
+#         run: |
+#           UUID=$(curl -s -H "X-Api-Key: $DT_API_KEY" \
+#             "$DT_URL/api/v1/project?name=$PROJECT_NAME" | jq -r '.[0].uuid // empty')
+
+#           if [ -z "$UUID" ]; then
+#             echo "Creating new project..."
+#             UUID=$(curl -s -X PUT -H "Content-Type: application/json" \
+#               -H "X-Api-Key: $DT_API_KEY" \
+#               -d '{"name":"'"$PROJECT_NAME"'","version":"'"$PROJECT_VERSION"'"}' \
+#               "$DT_URL/api/v1/project" | jq -r '.uuid')
+#           fi
+
+#           echo "uuid=$UUID" >> $GITHUB_OUTPUT
+
+#       # Upload SBOM
+#       - name: Upload SBOM to Dependency-Track
+#         run: |
+#           curl -s -X POST "$DT_URL/api/v1/bom" \
+#             -H "X-Api-Key: $DT_API_KEY" \
+#             -F "project=${{ steps.project.outputs.uuid }}" \
+#             -F "bom=@sbom.json"
