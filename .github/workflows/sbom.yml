@@ -20,14 +20,15 @@ jobs:
       - uses: actions/checkout@v4
 
       # Install CycloneDX CLI
-      - name: Install CycloneDX CLI
+      - name: Install CycloneDX CLI (latest)
         run: |
-          C_VERSION=0.26.1
+          LATEST=$(curl -s https://api.github.com/repos/CycloneDX/cyclonedx-cli/releases/latest | jq -r .tag_name)
           curl -L -o cyclonedx \
-            https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-cli-linux-x64
+            https://github.com/CycloneDX/cyclonedx-cli/releases/download/${LATEST}/cyclonedx-cli-linux-x64
           chmod +x cyclonedx
           sudo mv cyclonedx /usr/local/bin/
           cyclonedx --version
+
 
 
       # ---------- Java / Maven ----------
