@@ -23,14 +23,13 @@ jobs:
       - name: Install CycloneDX CLI
         run: |
           C_VERSION=0.26.1
-          curl -L -o cyclonedx \
-            https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-cli-linux-x64
-          chmod +x cyclonedx
+          curl -L -o cyclonedx.tar.gz \
+            https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${C_VERSION}/cyclonedx-cli-linux-x64.tar.gz
+          tar -xzf cyclonedx.tar.gz
           sudo mv cyclonedx /usr/local/bin/
       
       - name: Verify CycloneDX CLI
         run: cyclonedx --version
-
 
       # ---------------- Generate SBOMs ----------------
       - name: Generate SBOM - Maven
