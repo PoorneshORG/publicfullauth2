@@ -44,14 +44,20 @@ jobs:
           cyclonedx gradle --output-file sbom-gradle.json
 
       # ---------- Node.js / React ----------
+      # - name: Generate SBOM - Node.js
+      #   if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
+      #   run: |
+      #     if [ -f package-lock.json ]; then
+      #       cyclonedx npm --output-file sbom-node.json
+      #     elif [ -f yarn.lock ]; then
+      #       cyclonedx yarn --output-file sbom-node.json
+      #     fi
+
       - name: Generate SBOM - Node.js
         if: hashFiles('package-lock.json') != '' || hashFiles('yarn.lock') != ''
         run: |
-          if [ -f package-lock.json ]; then
-            cyclonedx npm --output-file sbom-node.json
-          elif [ -f yarn.lock ]; then
-            cyclonedx yarn --output-file sbom-node.json
-          fi
+          npm install -g @cyclonedx/cyclonedx-npm
+          cyclonedx-npm --output-file sbom-node.json
 
       # ---------- Python ----------
       - name: Generate SBOM - Python
